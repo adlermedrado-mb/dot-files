@@ -14,6 +14,7 @@ return {
         { "<leader>x", group = "Trouble" },
         { "<leader>a", group = "Claude" },
         { "<leader>b", group = "Buffer" },
+        { "<leader>m", group = "Markdown" },
       })
     end,
   },
