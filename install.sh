@@ -145,6 +145,39 @@ install_nvim_config() {
   fi
 }
 
+# Configure kitty to start maximized.
+# kitty has no kitty.conf directive to open maximized, so we add
+# `--start-as=maximized` to its .desktop launcher(s) (Linux). Idempotent.
+enable_kitty_maximized() {
+  local desktop_files=(
+    "$HOME/.local/share/applications/kitty.desktop"
+    "$HOME/.local/kitty.app/share/applications/kitty.desktop"
+    "/usr/share/applications/kitty.desktop"
+  )
+  local patched=false
+  local df
+  for df in "${desktop_files[@]}"; do
+    [ -f "$df" ] || continue
+    if grep -q -- '--start-as=maximized' "$df"; then
+      print_info "kitty launcher $df already starts maximized"
+      patched=true
+      continue
+    fi
+    if grep -qE '^Exec=\S*kitty' "$df"; then
+      if sed -i -E 's#^(Exec=\S*kitty)([[:space:]].*|)$#\1 --start-as=maximized\2#' "$df" 2>/dev/null; then
+        print_success "Configured $df to start kitty maximized"
+        patched=true
+      else
+        print_warning "Could not patch $df (permission?). Launch with: kitty --start-as=maximized"
+      fi
+    fi
+  done
+  if ! $patched; then
+    print_warning "No writable kitty desktop launcher found to configure maximized startup."
+    print_info "Launch kitty maximized with: kitty --start-as=maximized"
+  fi
+}
+
 # Check if a command exists
 command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -492,7 +525,15 @@ if confirm "Do you want to install Nerd Fonts?" "n"; then
       fi
       ;;
     debian)
-      sudo apt install -y fonts-firacode || print_warning "Failed to install Fira Code Nerd Font via apt"
+      FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip"
+      FONT_DEST="$HOME/.local/share/fonts"
+      mkdir -p "$FONT_DEST"
+      print_info "Downloading FiraCode Nerd Font..."
+      if curl -L -o /tmp/FiraCode.zip "$FONT_URL" && unzip -o /tmp/FiraCode.zip -d "$FONT_DEST"; then
+        fc-cache -fv && print_success "Fira Code Nerd Font installed to $FONT_DEST"
+      else
+        print_error "Failed to install Fira Code Nerd Font. Please install it manually from https://www.nerdfonts.com/font-downloads"
+      fi
       ;;
     opensuse)
       FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip"
@@ -577,6 +618,19 @@ if confirm "Do you want to install Starship prompt configuration?" "y"; then
   print_success "Starship configuration installed"
 else
   print_info "Skipping Starship configuration"
+fi
+
+# Kitty terminal configuration
+if confirm "Do you want to install Kitty terminal configuration?" "y"; then
+  create_symlink "$DOTFILES_DIR/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
+  if [ "$OS" == "macos" ]; then
+    print_info "On macOS, launch kitty maximized with: open -a kitty --args --start-as=maximized"
+  else
+    enable_kitty_maximized
+  fi
+  print_success "Kitty configuration installed"
+else
+  print_info "Skipping Kitty configuration"
 fi
 
 # Neovim configuration

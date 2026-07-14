@@ -15,7 +15,7 @@ These dotfiles include configurations for:
 - **Shell environments**: Bash, Zsh
 - **Text editors**: Vim, Neovim, Emacs
 - **Terminal multiplexers**: Tmux
-- **Terminal emulators**: iTerm2
+- **Terminal emulators**: iTerm2, Kitty
 - **IDE integrations**: IdeaVim
 - **Shell prompts**: Starship
 
@@ -93,6 +93,14 @@ The Starship configuration includes:
 - Custom prompt styling
 - Git integration
 - Command execution time display
+
+### Kitty Configuration
+
+The Kitty terminal configuration includes:
+- FiraCode Nerd Font (installed by the "Nerd Fonts" step of the installer)
+- Rose Pine color scheme (matching the Neovim theme)
+- Opens maximized on launch (the installer adds `--start-as=maximized` to the
+  kitty `.desktop` launcher on Linux)
 
 ## Customization
 
