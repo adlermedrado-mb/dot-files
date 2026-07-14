@@ -64,6 +64,27 @@ sysinfo() {
 }
 
 # -----------------------------------------------------------------------------
+# WSL: auto-start the Docker daemon
+# -----------------------------------------------------------------------------
+# On WSL without systemd the Docker daemon does not start automatically. This
+# starts it via the service command on the first interactive shell if it is
+# installed but not yet running. Safe to source elsewhere: it no-ops when not
+# on WSL, when docker is absent, or when the daemon is already up.
+if [[ -o interactive ]] && grep -qi microsoft /proc/version 2>/dev/null; then
+  if command -v docker >/dev/null 2>&1; then
+    # Only act if the daemon is not already responding
+    if ! docker info >/dev/null 2>&1; then
+      # Prefer systemd if it is managing docker; otherwise use the service
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-enabled docker >/dev/null 2>&1; then
+        sudo systemctl start docker 2>/dev/null
+      else
+        sudo service docker start >/dev/null 2>&1
+      fi
+    fi
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # Homebrew "source-first" helper commands (macOS only)
 # -----------------------------------------------------------------------------
 if [[ "$(uname -s)" == "Darwin" ]]; then

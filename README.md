@@ -102,6 +102,33 @@ The Kitty terminal configuration includes:
 - Opens maximized on launch (the installer adds `--start-as=maximized` to the
   kitty `.desktop` launcher on Linux)
 
+### Docker
+
+The install script can optionally install Docker Engine on the Linux
+distributions it supports (Debian/Ubuntu, openSUSE, and Red Hat based distros),
+including WSL:
+
+- On Debian/Ubuntu and Red Hat based distros it uses Docker's official
+  convenience script (`get.docker.com`).
+- On openSUSE it installs `docker`, `docker-compose`, and `docker-buildx` with
+  `zypper`.
+
+The installer also adds your user to the `docker` group and enables/starts the
+Docker service. On WSL without systemd, Docker is started via
+`sudo service docker start`; enable systemd by adding the following to
+`/etc/wsl.conf` and running `wsl --shutdown` from Windows:
+
+```ini
+[boot]
+systemd=true
+```
+
+On WSL the installer also offers to add a validated `sudoers.d` rule so
+`service docker` can be started without a password. When enabled, the Zsh
+startup snippet (in `zsh/config/functions.zsh`) auto-starts the Docker daemon on
+the first interactive shell after boot if it is not already running — no
+password prompt, no manual `service docker start`.
+
 ## Customization
 
 You can customize these dotfiles to suit your preferences:

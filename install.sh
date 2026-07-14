@@ -502,6 +502,103 @@ install_dependencies() {
   esac
 }
 
+# Allow the current user to run 'service docker start' without a password.
+# On WSL (no systemd) the shell startup snippet runs this on the first shell
+# after boot; a passwordless sudo rule keeps it from prompting every session.
+configure_docker_nopasswd_wsl() {
+  local service_bin sudoers_file sudoers_line tmp_file
+  service_bin="$(command -v service || echo /usr/sbin/service)"
+  sudoers_file="/etc/sudoers.d/docker-wsl"
+  sudoers_line="$USER ALL=(ALL) NOPASSWD: $service_bin docker start, $service_bin docker stop, $service_bin docker restart"
+
+  if [ -f "$sudoers_file" ] && sudo grep -qF "$service_bin docker start" "$sudoers_file" 2>/dev/null; then
+    print_info "Passwordless sudo rule for 'service docker' already present"
+    return 0
+  fi
+
+  # Validate the rule with visudo before installing it, so a bad line can never
+  # lock the user out of sudo.
+  tmp_file="/tmp/docker-wsl-sudoers.$$"
+  printf '%s\n' "$sudoers_line" > "$tmp_file"
+  if sudo visudo -cf "$tmp_file" >/dev/null 2>&1; then
+    sudo install -m 0440 -o root -g root "$tmp_file" "$sudoers_file" \
+      && print_success "Configured passwordless 'service docker start' for $USER (WSL)" \
+      || print_warning "Could not install $sudoers_file"
+  else
+    print_warning "Generated sudoers rule failed validation; skipping passwordless setup"
+  fi
+  rm -f "$tmp_file"
+}
+
+# Enable/start the Docker daemon and grant the current user access.
+# Handles both systemd hosts and WSL (where systemd may be disabled).
+post_install_docker() {
+  # Add the current user to the docker group so docker runs without sudo
+  if getent group docker >/dev/null 2>&1; then
+    if id -nG "$USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+      print_info "$USER is already in the docker group"
+    elif sudo usermod -aG docker "$USER"; then
+      print_success "Added $USER to the docker group (log out and back in for it to take effect)"
+    else
+      print_warning "Could not add $USER to the docker group; you may need to run docker with sudo"
+    fi
+  fi
+
+  # Enable and start the Docker service
+  if command_exists systemctl && systemctl list-unit-files 2>/dev/null | grep -q '^docker\.service'; then
+    sudo systemctl enable --now docker \
+      && print_success "Docker service enabled and started" \
+      || print_warning "Could not enable/start docker via systemctl"
+  else
+    if $IS_WSL; then
+      print_info "WSL detected: if systemd is not enabled, Docker is started via the service command."
+      print_info "Enable systemd by adding '[boot]\\nsystemd=true' to /etc/wsl.conf, then run 'wsl --shutdown' from Windows."
+      if confirm "Allow 'service docker start' without a sudo password (so the shell can auto-start Docker on WSL)?" "n"; then
+        configure_docker_nopasswd_wsl
+      fi
+    fi
+    sudo service docker start 2>/dev/null \
+      && print_success "Docker service started" \
+      || print_warning "Could not start docker automatically; start it manually with 'sudo service docker start'"
+  fi
+}
+
+# Install Docker Engine on the Linux distros this script supports (and WSL).
+install_docker() {
+  if command_exists docker; then
+    print_success "Docker is already installed ($(docker --version 2>/dev/null))"
+    post_install_docker
+    return 0
+  fi
+
+  case $OS in
+    debian|redhat)
+      if ! command_exists curl; then
+        print_error "curl is required to install Docker"
+        return 1
+      fi
+      print_info "Installing Docker using the official convenience script (get.docker.com)..."
+      curl -fsSL https://get.docker.com -o /tmp/get-docker.sh \
+        && sudo sh /tmp/get-docker.sh \
+        || { print_error "Docker installation failed"; return 1; }
+      ;;
+    opensuse)
+      print_info "Installing Docker with zypper..."
+      # docker-buildx may be unavailable on some releases; install_zypper_packages
+      # only warns on a missing package, so it is safe to request it.
+      install_zypper_packages docker docker-compose docker-buildx \
+        || { print_error "Docker installation failed"; return 1; }
+      ;;
+    *)
+      print_warning "Docker installation is not supported on this OS ($OS)."
+      return 0
+      ;;
+  esac
+
+  post_install_docker
+  print_success "Docker installation complete"
+}
+
 # Fast path: only install Neovim config and its required Neovim version
 if $NVIM_ONLY; then
   print_section "Neovim Configuration"
@@ -558,6 +655,20 @@ if confirm "Do you want to install dependencies?" "n"; then
 else
   print_info "Skipping dependency installation"
 fi
+
+# Docker installation (only on the Linux distros this script supports, incl. WSL)
+case $OS in
+  debian|opensuse|redhat)
+    if confirm "Do you want to install Docker?" "n"; then
+      install_docker || print_warning "Docker installation did not complete successfully"
+    else
+      print_info "Skipping Docker installation"
+    fi
+    ;;
+  *)
+    print_info "Docker auto-install is only supported on Debian/Ubuntu, openSUSE, and Red Hat based distros (including WSL)."
+    ;;
+esac
 
 # -----------------------------------------------------------------------------
 # Symlink Creation
